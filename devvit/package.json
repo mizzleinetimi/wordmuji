@@ -1,0 +1,10 @@
+{
+  "name": "wordmuji-devvit",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "license": "MIT",
+  "dependencies": {
+    "@devvit/public-api": "^0.12.0"
+  }
+}
