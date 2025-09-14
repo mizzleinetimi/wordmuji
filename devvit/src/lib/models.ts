@@ -14,3 +14,5 @@ export interface DailyProgress {
   guesses: string[]; // guesses for the current puzzle
   currentGuess?: string; // transient current input
 }
+
+export type UIView = 'game' | 'help' | 'stats';

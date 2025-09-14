@@ -1,4 +1,4 @@
-import { Stats, DailyProgress } from './models';
+import { Stats, DailyProgress, UIView } from './models';
 
 const defaultStats: Stats = {
   gamesPlayed: 0,
@@ -14,6 +14,10 @@ export function statsKey(userId: string): string {
 
 export function dailyKey(userId: string, yyyyMMdd: string): string {
   return `user:${userId}:daily:${yyyyMMdd}`;
+}
+
+export function viewKey(userId: string, yyyyMMdd: string): string {
+  return `user:${userId}:view:${yyyyMMdd}`;
 }
 
 export async function loadStats(kv: { get: (k: string) => Promise<string | undefined> }, userId: string): Promise<Stats> {
@@ -73,4 +77,23 @@ export async function saveDaily(
   progress: DailyProgress
 ): Promise<void> {
   await kv.set(dailyKey(userId, yyyyMMdd), JSON.stringify(progress));
+}
+
+export async function loadView(
+  kv: { get: (k: string) => Promise<string | undefined> },
+  userId: string,
+  yyyyMMdd: string
+): Promise<UIView> {
+  const v = await kv.get(viewKey(userId, yyyyMMdd));
+  if (v === 'help' || v === 'stats' || v === 'game') return v;
+  return 'game';
+}
+
+export async function saveView(
+  kv: { set: (k: string, v: string) => Promise<void> },
+  userId: string,
+  yyyyMMdd: string,
+  view: UIView
+): Promise<void> {
+  await kv.set(viewKey(userId, yyyyMMdd), view);
 }

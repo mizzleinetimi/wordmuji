@@ -4,8 +4,8 @@ import { emojiHints } from './data/wordData';
 import { evaluateGuess } from './lib/evaluate';
 import { deriveKeyboardStates } from './lib/keyboard';
 import { COLORS } from './ui/colors';
-import { loadDaily, saveDaily, loadStats, saveStats } from './lib/storage';
-import type { DailyProgress, Stats } from './lib/models';
+import { loadDaily, saveDaily, loadStats, saveStats, loadView, saveView } from './lib/storage';
+import type { DailyProgress, Stats, UIView } from './lib/models';
 
 // NOTE: This file sets up a custom post type that renders the game UI. In a real Devvit app,
 // you will access KV and user info from context (e.g., ctx). Here, we focus on UI structure
@@ -30,11 +30,10 @@ Devvit.addCustomPostType({
     const index = Math.min(Math.max(progress.currentIndex, 0), 9);
     const secretWord = dailyWords[index] ?? '';
     const completedCount = progress.completed.filter(Boolean).length;
+    const currentView: UIView = await loadView(kv, userId, today);
 
-    // Keyboard state from past guesses
     const keyStates = deriveKeyboardStates(secretWord, progress.guesses);
 
-    // Helpers
     const maxGuesses = 5;
     const wordLength = secretWord.length || 5;
 
@@ -56,10 +55,7 @@ Devvit.addCustomPostType({
       const isCurrent = rowIndex === progress!.guesses.length;
       const rowWord = isCompleted ? progress!.guesses[rowIndex] : (isCurrent ? (progress!.currentGuess ?? '') : '');
       const letters = rowWord.padEnd(wordLength, ' ').split('');
-
-      // Evaluate only completed rows
       const states = isCompleted ? evaluateGuess(secretWord, rowWord) : Array.from({ length: wordLength }, () => 'empty' as const);
-
       return (
         <hstack gap="small" alignment="center">
           {letters.map((ch, i) => makeTile(ch.trim() ? ch : '', (isCompleted ? (states[i] ?? 'empty') : (ch.trim() ? 'empty' : 'empty')) as any))}
@@ -89,7 +85,6 @@ Devvit.addCustomPostType({
         p.currentGuess = '';
 
         if (newGuesses[newGuesses.length - 1].toLowerCase() === currentSecret) {
-          // Win
           p.completed[p.currentIndex] = true;
           const s: Stats = await loadStats(kv, userId);
           const guessNumber = newGuesses.length - 1;
@@ -103,7 +98,6 @@ Devvit.addCustomPostType({
           };
           await saveStats(kv, userId, newStats);
 
-          // Move to next or finish
           if (p.completed.every(Boolean)) {
             await saveDaily(kv, userId, today, p);
             await ctx.ui.showToast('All puzzles complete!');
@@ -115,7 +109,6 @@ Devvit.addCustomPostType({
             await ctx.ui.showToast(`Moving to puzzle ${p.currentIndex + 1}...`);
           }
         } else if (newGuesses.length >= maxGuesses) {
-          // Loss
           const s: Stats = await loadStats(kv, userId);
           const newStats: Stats = { ...s, gamesPlayed: s.gamesPlayed + 1, currentStreak: 0 };
           await saveStats(kv, userId, newStats);
@@ -184,22 +177,99 @@ Devvit.addCustomPostType({
       </hstack>
     );
 
-    return (
-      <vstack padding="medium" gap="medium" backgroundColor={COLORS.bg}>
-        {/* Header */}
-        <hstack alignment="center space-between">
-          <button onPress={() => ctx.ui.showToast('How to play will be added shortly')}>
-            <text size="large">❓</text>
-          </button>
-          <vstack alignment="center middle" gap="xxsmall">
-            <text size="xxlarge">🆆🅾🆁🅳</text>
-            <text size="xxlarge">🅼🆄🅹🅸</text>
-          </vstack>
-          <button onPress={() => ctx.ui.showToast('Stats will be added shortly')}>
-            <text size="large">📊</text>
-          </button>
-        </hstack>
+    const header = (
+      <hstack alignment="center space-between">
+        <button onPress={async () => { await saveView(kv, userId, today, 'help'); await ctx.refresh(); }}>
+          <text size="large">❓</text>
+        </button>
+        <vstack alignment="center middle" gap="xxsmall">
+          <text size="xxlarge">🆆🅾🆁🅳</text>
+          <text size="xxlarge">🅼🆄🅹🅸</text>
+        </vstack>
+        <button onPress={async () => { await saveView(kv, userId, today, 'stats'); await ctx.refresh(); }}>
+          <text size="large">📊</text>
+        </button>
+      </hstack>
+    );
 
+    const helpView = (
+      <vstack gap="small" padding="small" backgroundColor={COLORS.bg}>
+        <text size="xlarge" color={COLORS.brandBlue} weight="bold">How to Play</text>
+        <text color={COLORS.brandBlue}>Guess the WordMuji in 5 tries based on the emoji hints.</text>
+        <hstack gap="small">
+          <text size="xxlarge">🍎</text>
+          <text size="xxlarge">🌳</text>
+          <text size="xxlarge">🥧</text>
+        </hstack>
+        <text color={COLORS.brandBlue}>These might hint at "APPLE"</text>
+        <vstack gap="xsmall">
+          <text weight="bold" color={COLORS.brandBlue}>Letter Feedback</text>
+          <hstack gap="xsmall" alignment="center">
+            <box width="24px" height="24px" backgroundColor={COLORS.green} />
+            <text color={COLORS.brandBlue}>Green: Correct and in the right position</text>
+          </hstack>
+          <hstack gap="xsmall" alignment="center">
+            <box width="24px" height="24px" backgroundColor={COLORS.brandYellow} />
+            <text color={COLORS.brandBlue}>Yellow: In the word but wrong position</text>
+          </hstack>
+          <hstack gap="xsmall" alignment="center">
+            <box width="24px" height="24px" backgroundColor={COLORS.gray} />
+            <text color={COLORS.brandBlue}>Gray: Not in the word</text>
+          </hstack>
+        </vstack>
+        <button onPress={async () => { await saveView(kv, userId, today, 'game'); await ctx.refresh(); }} backgroundColor={COLORS.brandBlue} color={COLORS.white}>
+          <text weight="bold">Back to game</text>
+        </button>
+      </vstack>
+    );
+
+    const stats = await loadStats(kv, userId);
+    const winPercentage = stats.gamesPlayed > 0 ? Math.round((stats.gamesWon / stats.gamesPlayed) * 100) : 0;
+    const totalGuesses = stats.guessDistribution.reduce((s, c) => s + c, 0);
+
+    const statsView = (
+      <vstack gap="medium" padding="small" backgroundColor={COLORS.bg}>
+        <text size="xlarge" color={COLORS.brandBlue} weight="bold">Your WordMuji Stats</text>
+        <hstack gap="small">
+          <vstack padding="small" backgroundColor={`${COLORS.brandBlue}11`} cornerRadius="large">
+            <text color={COLORS.brandBlue}>Puzzles</text>
+            <text size="xxlarge" color={COLORS.brandBlue} weight="bold">{stats.gamesPlayed}</text>
+          </vstack>
+          <vstack padding="small" backgroundColor={`#22c55e22`} cornerRadius="large">
+            <text color="#16a34a">Success</text>
+            <text size="xxlarge" color="#16a34a" weight="bold">{winPercentage}%</text>
+          </vstack>
+          <vstack padding="small" backgroundColor={`${COLORS.brandYellow}22`} cornerRadius="large">
+            <text color={COLORS.brandBlue}>Streak</text>
+            <text size="xxlarge" color={COLORS.brandBlue} weight="bold">{stats.currentStreak}</text>
+          </vstack>
+        </hstack>
+        <vstack gap="xsmall">
+          <text color={COLORS.brandBlue} weight="bold">Guess Distribution</text>
+          {stats.guessDistribution.map((count, index) => {
+            const pct = totalGuesses > 0 ? Math.round((count / totalGuesses) * 100) : 0;
+            const w = Math.max(pct, 15);
+            return (
+              <hstack alignment="center" gap="small">
+                <text color={COLORS.brandBlue}>{index + 1}</text>
+                <box width={`${w}%`} height="24px" cornerRadius="medium" backgroundColor={count > 0 ? COLORS.brandBlue : `${COLORS.brandBlue}22`}>
+                  <hstack alignment="center space-between" padding="xsmall">
+                    <text color={count > 0 ? COLORS.white : COLORS.brandBlue}>{count}</text>
+                    {pct > 0 && <text color={count > 0 ? COLORS.white : COLORS.brandBlue}>{pct}%</text>}
+                  </hstack>
+                </box>
+              </hstack>
+            );
+          })}
+        </vstack>
+        <button onPress={async () => { await saveView(kv, userId, today, 'game'); await ctx.refresh(); }} backgroundColor={COLORS.brandBlue} color={COLORS.white}>
+          <text weight="bold">Continue Playing</text>
+        </button>
+      </vstack>
+    );
+
+    const gameView = (
+      <>
         {/* Progress */}
         <vstack gap="small" backgroundColor={`${COLORS.brandBlue}11`} cornerRadius="large" padding="small">
           <hstack alignment="center space-between">
@@ -222,9 +292,6 @@ Devvit.addCustomPostType({
         {/* Keyboard */}
         {keyboard}
 
-        {/* Footer message placeholder */}
-        <text color={COLORS.brandBlue}></text>
-
         {/* Completion footer when done */}
         {progress.completed.every(Boolean) && (
           <vstack gap="small" cornerRadius="large" padding="small" backgroundColor={`${COLORS.brandYellow}22`}>
@@ -232,6 +299,13 @@ Devvit.addCustomPostType({
             <text color={COLORS.brandBlue}>Next Challenge: {getTimeUntilNextUTCChallenge()}</text>
           </vstack>
         )}
+      </>
+    );
+
+    return (
+      <vstack padding="medium" gap="medium" backgroundColor={COLORS.bg}>
+        {header}
+        {currentView === 'help' ? helpView : currentView === 'stats' ? statsView : gameView}
       </vstack>
     );
   },
