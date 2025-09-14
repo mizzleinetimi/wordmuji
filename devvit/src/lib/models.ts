@@ -15,4 +15,4 @@ export interface DailyProgress {
   currentGuess?: string; // transient current input
 }
 
-export type UIView = 'game' | 'help' | 'stats';
+export type UIView = 'game' | 'help' | 'stats' | 'share';

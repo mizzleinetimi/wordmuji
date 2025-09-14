@@ -6,6 +6,7 @@ import { deriveKeyboardStates } from './lib/keyboard';
 import { COLORS } from './ui/colors';
 import { loadDaily, saveDaily, loadStats, saveStats, loadView, saveView } from './lib/storage';
 import type { DailyProgress, Stats, UIView } from './lib/models';
+import { generateShareTextUTC } from './lib/share';
 
 // NOTE: This file sets up a custom post type that renders the game UI. In a real Devvit app,
 // you will access KV and user info from context (e.g., ctx). Here, we focus on UI structure
@@ -186,9 +187,14 @@ Devvit.addCustomPostType({
           <text size="xxlarge">🆆🅾🆁🅳</text>
           <text size="xxlarge">🅼🆄🅹🅸</text>
         </vstack>
-        <button onPress={async () => { await saveView(kv, userId, today, 'stats'); await ctx.refresh(); }}>
-          <text size="large">📊</text>
-        </button>
+        <hstack gap="xsmall">
+          <button onPress={async () => { await saveView(kv, userId, today, 'stats'); await ctx.refresh(); }}>
+            <text size="large">📊</text>
+          </button>
+          <button onPress={async () => { await saveView(kv, userId, today, 'share'); await ctx.refresh(); }}>
+            <text size="large">🔗</text>
+          </button>
+        </hstack>
       </hstack>
     );
 
@@ -268,9 +274,26 @@ Devvit.addCustomPostType({
       </vstack>
     );
 
+    const shareText = generateShareTextUTC(progress.completed.filter(Boolean).length, 10);
+    const shareView = (
+      <vstack gap="small" padding="small" backgroundColor={COLORS.bg}>
+        <text size="xlarge" color={COLORS.brandBlue} weight="bold">Share Results</text>
+        <box padding="small" backgroundColor={`${COLORS.brandBlue}11`} cornerRadius="large">
+          <text>{shareText}</text>
+        </box>
+        <hstack gap="small">
+          <button onPress={async () => { await ctx.ui.copyToClipboard?.(shareText); await ctx.ui.showToast('Copied to clipboard!'); }} backgroundColor={COLORS.brandYellow} color={COLORS.brandBlue}>
+            <text weight="bold">Copy</text>
+          </button>
+          <button onPress={async () => { await saveView(kv, userId, today, 'game'); await ctx.refresh(); }} backgroundColor={COLORS.brandBlue} color={COLORS.white}>
+            <text weight="bold">Back to game</text>
+          </button>
+        </hstack>
+      </vstack>
+    );
+
     const gameView = (
       <>
-        {/* Progress */}
         <vstack gap="small" backgroundColor={`${COLORS.brandBlue}11`} cornerRadius="large" padding="small">
           <hstack alignment="center space-between">
             <text color={COLORS.brandBlue}>Puzzle {index + 1} of 10</text>
@@ -278,25 +301,25 @@ Devvit.addCustomPostType({
           </hstack>
           {progressBar}
         </vstack>
-
-        {/* Emoji hints */}
         <box cornerRadius="large" padding="small" backgroundColor={`${COLORS.brandBlue}11`}>
           {emojiRow}
         </box>
-
-        {/* Board */}
         <vstack gap="small" alignment="center">
           {rows}
         </vstack>
-
-        {/* Keyboard */}
         {keyboard}
-
-        {/* Completion footer when done */}
         {progress.completed.every(Boolean) && (
           <vstack gap="small" cornerRadius="large" padding="small" backgroundColor={`${COLORS.brandYellow}22`}>
             <text size="xlarge" color={COLORS.brandBlue}>All Puzzles Complete!</text>
             <text color={COLORS.brandBlue}>Next Challenge: {getTimeUntilNextUTCChallenge()}</text>
+            <hstack gap="small">
+              <button onPress={async () => { await saveView(kv, userId, today, 'stats'); await ctx.refresh(); }} backgroundColor={COLORS.brandBlue} color={COLORS.white}>
+                <text weight="bold">View Stats</text>
+              </button>
+              <button onPress={async () => { await saveView(kv, userId, today, 'share'); await ctx.refresh(); }} backgroundColor={COLORS.brandYellow} color={COLORS.brandBlue}>
+                <text weight="bold">Share</text>
+              </button>
+            </hstack>
           </vstack>
         )}
       </>
@@ -305,7 +328,7 @@ Devvit.addCustomPostType({
     return (
       <vstack padding="medium" gap="medium" backgroundColor={COLORS.bg}>
         {header}
-        {currentView === 'help' ? helpView : currentView === 'stats' ? statsView : gameView}
+        {currentView === 'help' ? helpView : currentView === 'stats' ? statsView : currentView === 'share' ? shareView : gameView}
       </vstack>
     );
   },
