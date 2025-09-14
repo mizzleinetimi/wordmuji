@@ -12,4 +12,5 @@ export interface DailyProgress {
   currentIndex: number; // 0..9
   completed: boolean[]; // length 10
   guesses: string[]; // guesses for the current puzzle
+  currentGuess?: string; // transient current input
 }

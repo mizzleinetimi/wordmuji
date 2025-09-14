@@ -16,19 +16,19 @@ export function dailyKey(userId: string, yyyyMMdd: string): string {
   return `user:${userId}:daily:${yyyyMMdd}`;
 }
 
-export async function loadStats(kv: { get: (k: string) => Promise<string | undefined> }): Promise<Stats> {
-  const raw = await kv.get(statsKey('self'));
+export async function loadStats(kv: { get: (k: string) => Promise<string | undefined> }, userId: string): Promise<Stats> {
+  const raw = await kv.get(statsKey(userId));
   if (!raw) return { ...defaultStats };
   try {
     const parsed = JSON.parse(raw);
-    // Basic shape validation
     if (
       typeof parsed === 'object' && parsed &&
       typeof parsed.gamesPlayed === 'number' &&
       typeof parsed.gamesWon === 'number' &&
       typeof parsed.currentStreak === 'number' &&
       typeof parsed.maxStreak === 'number' &&
-      Array.isArray(parsed.guessDistribution)
+      Array.isArray(parsed.guessDistribution) && parsed.guessDistribution.length === 5 &&
+      parsed.guessDistribution.every((n: unknown) => typeof n === 'number')
     ) {
       return parsed as Stats;
     }
@@ -52,10 +52,15 @@ export async function loadDaily(
     if (
       typeof parsed === 'object' && parsed &&
       typeof parsed.currentIndex === 'number' &&
-      Array.isArray(parsed.completed) &&
-      Array.isArray(parsed.guesses)
+      Array.isArray(parsed.completed) && parsed.completed.length === 10 &&
+      parsed.completed.every((b: unknown) => typeof b === 'boolean') &&
+      Array.isArray(parsed.guesses) && parsed.guesses.every((s: unknown) => typeof s === 'string')
     ) {
-      return parsed as DailyProgress;
+      const dp = parsed as DailyProgress;
+      if (typeof dp.currentGuess !== 'string') {
+        dp.currentGuess = '';
+      }
+      return dp;
     }
   } catch {}
   return undefined;
