@@ -4,7 +4,7 @@ import { emojiHints } from './data/wordData';
 import { evaluateGuess } from './lib/evaluate';
 import { deriveKeyboardStates } from './lib/keyboard';
 import { COLORS } from './ui/colors';
-import { loadDaily, saveDaily, loadStats, saveStats, loadView, saveView } from './lib/storage';
+import { loadDaily, saveDaily, loadStats, saveStats, loadView, saveView, loadMessage, saveMessage, clearMessage } from './lib/storage';
 import type { DailyProgress, Stats, UIView } from './lib/models';
 import { generateShareTextUTC } from './lib/share';
 
@@ -32,6 +32,7 @@ Devvit.addCustomPostType({
     const secretWord = dailyWords[index] ?? '';
     const completedCount = progress.completed.filter(Boolean).length;
     const currentView: UIView = await loadView(kv, userId, today);
+    const message = await loadMessage(kv, userId, today);
 
     const keyStates = deriveKeyboardStates(secretWord, progress.guesses);
 
@@ -78,12 +79,14 @@ Devvit.addCustomPostType({
 
       if (key === 'ENTER') {
         if ((p.currentGuess ?? '').length !== currentSecret.length) {
-          await ctx.ui.showToast(`Word must be ${currentSecret.length} letters`);
+          await saveMessage(kv, userId, today, `Word must be ${currentSecret.length} letters`);
+          await ctx.refresh();
           return;
         }
         const newGuesses = [...p.guesses, p.currentGuess ?? ''];
         p.guesses = newGuesses;
         p.currentGuess = '';
+        await clearMessage(kv, userId, today);
 
         if (newGuesses[newGuesses.length - 1].toLowerCase() === currentSecret) {
           p.completed[p.currentIndex] = true;
@@ -101,13 +104,13 @@ Devvit.addCustomPostType({
 
           if (p.completed.every(Boolean)) {
             await saveDaily(kv, userId, today, p);
-            await ctx.ui.showToast('All puzzles complete!');
+            await saveMessage(kv, userId, today, 'All puzzles complete!');
           } else {
             p.currentIndex = Math.min(p.currentIndex + 1, 9);
             p.guesses = [];
             p.currentGuess = '';
             await saveDaily(kv, userId, today, p);
-            await ctx.ui.showToast(`Moving to puzzle ${p.currentIndex + 1}...`);
+            await saveMessage(kv, userId, today, `Moving to puzzle ${p.currentIndex + 1}...`);
           }
         } else if (newGuesses.length >= maxGuesses) {
           const s: Stats = await loadStats(kv, userId);
@@ -119,10 +122,10 @@ Devvit.addCustomPostType({
             p.guesses = [];
             p.currentGuess = '';
             await saveDaily(kv, userId, today, p);
-            await ctx.ui.showToast('Moving to next puzzle...');
+            await saveMessage(kv, userId, today, 'Moving to next puzzle...');
           } else {
             await saveDaily(kv, userId, today, p);
-            await ctx.ui.showToast('Daily challenge over!');
+            await saveMessage(kv, userId, today, 'Daily challenge over!');
           }
         } else {
           await saveDaily(kv, userId, today, p);
@@ -282,7 +285,7 @@ Devvit.addCustomPostType({
           <text>{shareText}</text>
         </box>
         <hstack gap="small">
-          <button onPress={async () => { await ctx.ui.copyToClipboard?.(shareText); await ctx.ui.showToast('Copied to clipboard!'); }} backgroundColor={COLORS.brandYellow} color={COLORS.brandBlue}>
+          <button onPress={async () => { await ctx.ui.copyToClipboard?.(shareText); await saveMessage(kv, userId, today, 'Copied to clipboard!'); await ctx.refresh(); }} backgroundColor={COLORS.brandYellow} color={COLORS.brandBlue}>
             <text weight="bold">Copy</text>
           </button>
           <button onPress={async () => { await saveView(kv, userId, today, 'game'); await ctx.refresh(); }} backgroundColor={COLORS.brandBlue} color={COLORS.white}>
@@ -307,6 +310,11 @@ Devvit.addCustomPostType({
         <vstack gap="small" alignment="center">
           {rows}
         </vstack>
+        {message && (
+          <box padding="xsmall" cornerRadius="large" backgroundColor={`${COLORS.brandBlue}22`}>
+            <text color={COLORS.brandBlue}>{message}</text>
+          </box>
+        )}
         {keyboard}
         {progress.completed.every(Boolean) && (
           <vstack gap="small" cornerRadius="large" padding="small" backgroundColor={`${COLORS.brandYellow}22`}>

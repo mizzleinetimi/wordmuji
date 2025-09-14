@@ -20,6 +20,10 @@ export function viewKey(userId: string, yyyyMMdd: string): string {
   return `user:${userId}:view:${yyyyMMdd}`;
 }
 
+export function messageKey(userId: string, yyyyMMdd: string): string {
+  return `user:${userId}:message:${yyyyMMdd}`;
+}
+
 export async function loadStats(kv: { get: (k: string) => Promise<string | undefined> }, userId: string): Promise<Stats> {
   const raw = await kv.get(statsKey(userId));
   if (!raw) return { ...defaultStats };
@@ -85,7 +89,7 @@ export async function loadView(
   yyyyMMdd: string
 ): Promise<UIView> {
   const v = await kv.get(viewKey(userId, yyyyMMdd));
-  if (v === 'help' || v === 'stats' || v === 'game') return v;
+  if (v === 'help' || v === 'stats' || v === 'game' || v === 'share') return v;
   return 'game';
 }
 
@@ -96,4 +100,29 @@ export async function saveView(
   view: UIView
 ): Promise<void> {
   await kv.set(viewKey(userId, yyyyMMdd), view);
+}
+
+export async function loadMessage(
+  kv: { get: (k: string) => Promise<string | undefined> },
+  userId: string,
+  yyyyMMdd: string
+): Promise<string> {
+  return (await kv.get(messageKey(userId, yyyyMMdd))) ?? '';
+}
+
+export async function saveMessage(
+  kv: { set: (k: string, v: string) => Promise<void> },
+  userId: string,
+  yyyyMMdd: string,
+  message: string
+): Promise<void> {
+  await kv.set(messageKey(userId, yyyyMMdd), message);
+}
+
+export async function clearMessage(
+  kv: { set: (k: string, v: string) => Promise<void> },
+  userId: string,
+  yyyyMMdd: string
+): Promise<void> {
+  await kv.set(messageKey(userId, yyyyMMdd), '');
 }
